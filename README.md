@@ -2,7 +2,7 @@
 
 Real-time network health monitoring dashboard.
 
-Pings a configurable list of hosts every X seconds and tracks latency, packet loss, and jitter — combined into a single health score per host.
+Pings a configurable list of hosts every X seconds and tracks latency, packet loss, and jitter and combining them  into a single health score per host.
 
 ## Stack
 - **Backend:** FastAPI, icmplib, WebSockets
