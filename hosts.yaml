@@ -1,0 +1,19 @@
+ hosts:
+  - name: "Google DNS"
+    address: "8.8.8.8"
+    category: "DNS"
+    enabled: true
+  - name: "Cloudflare DNS"
+    address: "1.1.1.1"
+    category: "DNS"
+    enabled: true
+  - name: "Nokia"
+    address: "nokia.com"
+    category: "Telecom"
+    enabled: true
+  - name: "Localhost"
+    address: "127.0.0.1"  
+    category: "Local"
+    enabled: true
+  
+  
