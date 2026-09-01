@@ -1,0 +1,10 @@
+# Compiled C++ binaries (they have no file extension)
+echo_server
+client
+*.o
+*.out
+
+
+# Editor / OS cruft
+.vscode/
+.DS_Store
