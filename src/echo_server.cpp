@@ -22,7 +22,11 @@ int main(){
     server_addr.sin_port= htons(9000);
 
     // Bind
-    bind(sock, (sockaddr*)&server_addr, sizeof(server_addr) );
+    if (bind(sock, (sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+    std::cerr << "bind() failed\n";
+    close(sock);
+    return 1;
+}
 
 
     std::cout << " Echo server listening in port 9000...\n";
