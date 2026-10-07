@@ -23,22 +23,29 @@ int main(){
 
     // Bind
     if (bind(sock, (sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-    std::cerr << "bind() failed\n";
-    close(sock);
-    return 1;
-}
+        std::cerr << "bind() failed\n";
+        close(sock);
+        return 1;
+    }
 
 
     std::cout << " Echo server listening in port 9000...\n";
 
     char buffer[1024];
     sockaddr_in  client_addr{};
-    socklen_t client_len = sizeof(client_addr);
 
     // Looping forever and echoing whatever arrives
     while(true){
+        // recvfrom overwrites client_len, so reset it before every call
+        socklen_t client_len = sizeof(client_addr);
+
         // recvfrom blocks until a packet arrives and fills client_addr with WHO sent it
         ssize_t n = recvfrom( sock, buffer, sizeof(buffer)-1, 0, (sockaddr*)&client_addr, &client_len);
+
+        if (n < 0) {
+            std::cerr << "recvfrom() failed\n";
+            continue;
+        }
 
         buffer[n]= '\0';
 
