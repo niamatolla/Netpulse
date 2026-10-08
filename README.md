@@ -44,23 +44,25 @@ comes back, which is what lets queues build and the knee appears.
 ## Roadmap
 
 - [x] **Phase 0** — UDP echo round-trip in C++ (proves a packet can make the trip)
-- [ ] **Phase 1** — per-packet RTT timing
+- [x] **Phase 1** — per-packet RTT timing
 - [ ] **Phase 2** — load loop + p50 / p95 / p99 at a single rate
 - [ ] **Phase 3** — rate sweep (100 → 5000 pps) + Python plots
 - [ ] **Phase 4** — jitter, loss, and the results writeup
 
-## Build & run (Phase 0)
+## Build & run
 
 ```bash
 g++ src/echo_server.cpp -o echo_server
 g++ src/client.cpp -o client
 
 ./echo_server        # terminal 1 — stays running, waiting for packets
-./client             # terminal 2 — sends one packet, prints the reply
+./client             # terminal 2 — sends 10 packets, prints each one's RTT
 ```
 
 ## Status
 
-**Phase 0 complete** — UDP echo verified end to end.
+**Phase 1 complete** — the client times the round trip of every packet.
+
+Phase 0, UDP echo verified end to end:
 
 ![Phase 0 UDP echo verification](docs/phase0-echo.png)
