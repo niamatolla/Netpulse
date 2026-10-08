@@ -47,9 +47,7 @@ int main(){
             continue;
         }
 
-        buffer[n]= '\0';
-
-        std::cout << "Received " <<n << "bytes\n" ;
+        // No printing in this loop: terminal output would be timed as network latency
 
         // send the exact same byte to whoever sent them
         sendto(sock, buffer, n,0, (sockaddr*)&client_addr,client_len );

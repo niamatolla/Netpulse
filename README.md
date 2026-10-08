@@ -66,3 +66,18 @@ g++ src/client.cpp -o client
 Phase 0, UDP echo verified end to end:
 
 ![Phase 0 UDP echo verification](docs/phase0-echo.png)
+
+
+Phase 1, per-packet RTT timing:
+
+![Phase 1 per-packet RTT timing](docs/phase1-rtt.png)
+
+Measurement fidelity, printing vs no printing in the echo server:
+
+![RTT with and without the server's per-packet print](docs/printingvsnoprinting.png)
+
+The server used to print a line for every packet it echoed. That print sits
+inside the timed round trip, so the client was measuring terminal output as if
+it were network latency: about 10 µs per packet at the median, roughly a third
+of the whole RTT on loopback. The echo loop now prints nothing. Ranges are
+across three runs of 500 packets each, with the first 20 dropped as warm-up.
