@@ -20,21 +20,21 @@ real systems.
 
 ## What it measures
 
-- **Latency percentiles (p50 / p95 / p99)** — the median and, critically, the tail.
-- **Jitter** — variation in inter-packet delay (RFC 3550).
-- **Loss rate** — the fraction of packets that never return.
-- **The knee** — the load level where p99 and loss turn sharply upward while p50
+- **Latency percentiles (p50 / p95 / p99)**: the median and, critically, the tail.
+- **Jitter**: variation in inter-packet delay (RFC 3550).
+- **Loss rate**: the fraction of packets that never return.
+- **The knee** : the load level where p99 and loss turn sharply upward while p50
   still looks fine.
 
 ## Architecture
 
 The hot path is C++; the orchestration around it is Python.
 
-- **C++ core** — the send/receive loop, per-packet timestamping, RTT storage, and
+- **C++ core**: the send/receive loop, per-packet timestamping, RTT storage, and
   percentile math. C++ is used here for *measurement fidelity*: at thousands of
   packets per second, an interpreted runtime's pauses would be recorded as network
   latency. A tight, predictable C++ loop keeps the numbers honest.
-- **Python orchestration** — runs the C++ core at each rate in the sweep, collects
+- **Python orchestration**: runs the C++ core at each rate in the sweep, collects
   the results, and produces the plots and summary. It is not timing-sensitive,
   so Python's convenience costs nothing.
 
@@ -43,11 +43,11 @@ comes back, which is what lets queues build and the knee appears.
 
 ## Roadmap
 
-- [x] **Phase 0** — UDP echo round-trip in C++ (proves a packet can make the trip)
-- [x] **Phase 1** — per-packet RTT timing
-- [x] **Phase 2** — load loop + p50 / p95 / p99 at a single rate
-- [ ] **Phase 3** — rate sweep (100 → 5000 pps) + Python plots
-- [ ] **Phase 4** — jitter, loss, and the results writeup
+- [x] **Phase 0** : UDP echo round-trip in C++ (proves a packet can make the trip)
+- [x] **Phase 1**: per-packet RTT timing
+- [x] **Phase 2**: load loop + p50 / p95 / p99 at a single rate
+- [ ] **Phase 3**: rate sweep (100 → 5000 pps) + Python plots
+- [ ] **Phase 4** : jitter, loss, and the results writeup
 
 ## Build & run
 
