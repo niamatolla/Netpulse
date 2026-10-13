@@ -45,23 +45,32 @@ comes back, which is what lets queues build and the knee appears.
 
 - [x] **Phase 0** — UDP echo round-trip in C++ (proves a packet can make the trip)
 - [x] **Phase 1** — per-packet RTT timing
-- [ ] **Phase 2** — load loop + p50 / p95 / p99 at a single rate
+- [x] **Phase 2** — load loop + p50 / p95 / p99 at a single rate
 - [ ] **Phase 3** — rate sweep (100 → 5000 pps) + Python plots
 - [ ] **Phase 4** — jitter, loss, and the results writeup
 
 ## Build & run
 
 ```bash
-g++ src/echo_server.cpp -o echo_server
-g++ src/client.cpp -o client
+g++ -std=c++17 -O2 src/echo_server.cpp -o echo_server
+g++ -std=c++17 -O2 -pthread src/client.cpp -o client
 
 ./echo_server        # terminal 1 — stays running, waiting for packets
-./client             # terminal 2 — sends 10 packets, prints each one's RTT
+./client 1000 5      # terminal 2 — 1000 packets per second for 5 seconds
+```
+
+The client takes the send rate (packets per second) and the duration (seconds),
+and defaults to `1000 5`. It prints the rate it actually achieved, the loss, and
+the p50 / p95 / p99 round-trip times:
+
+```
+target rate: 1000 pps   achieved: 1000 pps
+sent: 5000   received: 5000   lost: 0 (0.00%)
+p50: 135.2 us   p95: 146.2 us   p99: 155.4 us   (5000 samples, after 100 warm-up packets)
 ```
 
 ## Status
 
-**Phase 1 complete** — the client times the round trip of every packet.
 
 Phase 0, UDP echo verified end to end:
 
@@ -81,3 +90,14 @@ inside the timed round trip, so the client was measuring terminal output as if
 it were network latency: about 10 µs per packet at the median, roughly a third
 of the whole RTT on loopback. The echo loop now prints nothing. Ranges are
 across three runs of 500 packets each, with the first 20 dropped as warm-up.
+
+Phase 2, load loop + p50 / p95 / p99 at a single rate:
+
+![Phase 2 load loop with p50 / p95 / p99](docs/phase2-loadloop.png)
+
+Warm-up handling changed: the warm-up packets used to be taken out of the run,
+so `./client 1000 5` reported only 4900 samples. They are now sent in addition,
+before the measured packets and at the same rate, so the run reports the full
+`rate × duration` samples (5000 here).
+
+![Phase 2 load loop with warm-up handling](docs/phase2-warmup.png)
