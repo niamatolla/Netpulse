@@ -2,12 +2,18 @@
 """Phase 3: rate sweep.
 
 Runs ./client at each rate in RATES, several times, and records every run in
-results/sweep.csv. Then plots latency percentiles and loss against the send
-rate in results/sweep.png.
+a CSV file. Then plots latency percentiles and loss against the send rate.
+
+Every sweep gets its own pair of files, named after the time it started, so
+earlier sweeps are never overwritten:
+
+    results/sweep-2026-10-13-2047.csv
+    results/sweep-2026-10-13-2047.png
 
 The echo server must already be running:   ./echo_server
 Run the sweep:                             python3 sweep.py
-Redraw the plot from an existing CSV:      python3 sweep.py --plot-only
+Redraw the plot of the latest sweep:       python3 sweep.py --plot-only
+Redraw the plot of a chosen sweep:         python3 sweep.py --plot-only results/sweep-2026-10-13-2047.csv
 """
 
 import csv
@@ -26,8 +32,6 @@ from matplotlib.ticker import FuncFormatter, NullFormatter
 ROOT = Path(__file__).resolve().parent
 CLIENT = ROOT / "client"
 RESULTS_DIR = ROOT / "results"
-CSV_PATH = RESULTS_DIR / "sweep.csv"
-PLOT_PATH = RESULTS_DIR / "sweep.png"
 
 # Send rates in packets per second. They are spaced widely where the path is healthy
 # and densely from 80,000 up where it starts to saturate.
@@ -61,12 +65,16 @@ def run_client(rate):
 
 
 def run_sweep():
-    """Run every rate REPEATS times and write one CSV row per run."""
+    """Run every rate REPEATS times and write one CSV row per run.
+
+    Returns the path of the CSV file it wrote.
+    """
     if not CLIENT.exists():
         sys.exit("./client not found. Build it first (see README).")
 
     RESULTS_DIR.mkdir(exist_ok=True)
-    with open(CSV_PATH, "w", newline="") as f:
+    csv_path = RESULTS_DIR / f"sweep-{time.strftime('%Y-%m-%d-%H%M')}.csv"
+    with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
         writer.writeheader()
 
@@ -86,12 +94,21 @@ def run_sweep():
                       f"  p99 {row['p99_us']:>9} us")
                 time.sleep(PAUSE_S)
 
-    print(f"wrote {CSV_PATH.relative_to(ROOT)}")
+    print(f"wrote {csv_path.relative_to(ROOT)}")
+    return csv_path
 
 
-def load_rows():
+def latest_csv():
+    """The most recent sweep's CSV. The timestamped names sort by time."""
+    found = sorted(RESULTS_DIR.glob("sweep-*.csv"))
+    if not found:
+        sys.exit("no sweep CSV in results/. Run python3 sweep.py first.")
+    return found[-1]
+
+
+def load_rows(csv_path):
     """Read the CSV back, turning every value into a number (or None if empty)."""
-    with open(CSV_PATH, newline="") as f:
+    with open(csv_path, newline="") as f:
         return [{key: float(value) if value else None for key, value in row.items()}
                 for row in csv.DictReader(f)]
 
@@ -116,9 +133,13 @@ def format_latency(value, _position):
     return f"{value / 1000:g} ms" if value >= 1000 else f"{value:g} µs"
 
 
-def plot():
-    """Draw latency percentiles (top) and loss (bottom) against the send rate."""
-    rows = load_rows()
+def plot(csv_path):
+    """Draw latency percentiles (top) and loss (bottom) against the send rate.
+
+    The plot is saved next to the CSV, with the same name but ending in .png.
+    """
+    rows = load_rows(csv_path)
+    plot_path = csv_path.with_suffix(".png")
 
     surface, ink, muted, grid = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
     plt.rcParams.update({"font.size": 10, "text.color": ink,
@@ -173,11 +194,14 @@ def plot():
         for side in ("top", "right", "left"):
             ax.spines[side].set_visible(False)
 
-    fig.savefig(PLOT_PATH, dpi=160, bbox_inches="tight", facecolor=surface)
-    print(f"wrote {PLOT_PATH.relative_to(ROOT)}")
+    fig.savefig(plot_path, dpi=160, bbox_inches="tight", facecolor=surface)
+    print(f"wrote {plot_path.relative_to(ROOT)}")
 
 
 if __name__ == "__main__":
-    if "--plot-only" not in sys.argv:
-        run_sweep()
-    plot()
+    args = sys.argv[1:]
+    if "--plot-only" in args:
+        args.remove("--plot-only")
+        plot(Path(args[0]).resolve() if args else latest_csv())
+    else:
+        plot(run_sweep())

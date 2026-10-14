@@ -76,11 +76,14 @@ to 200,000 pps, three times each for 2 seconds, and takes about 3 minutes:
 
 ```bash
 python3 sweep.py                # run the sweep, then plot it
-python3 sweep.py --plot-only    # redraw the plot from the saved CSV
+python3 sweep.py --plot-only    # redraw the plot of the latest sweep
 ```
 
-It writes one row per run to `results/sweep.csv` and the plot to
-`results/sweep.png`. It needs matplotlib (`pip3 install matplotlib`). The rates,
+Every sweep gets its own pair of files in `results/`, named after the time it
+started, so earlier sweeps are never overwritten: one row per run in
+`results/sweep-2026-10-13-2047.csv` and the plot in
+`results/sweep-2026-10-13-2047.png`. `--plot-only` redraws the latest sweep, or
+the one whose CSV you name after it. It needs matplotlib (`pip3 install matplotlib`). The rates,
 duration and repeat count are constants at the top of the script.
 
 The sweep was first planned as 100 → 5000 pps, but loopback on this machine does
@@ -122,21 +125,24 @@ before the measured packets and at the same rate, so the run reports the full
 
 Phase 3, rate sweep from 1,000 to 200,000 pps over loopback:
 
-![Latency percentiles and loss against send rate](results/sweep.png)
+![Latency percentiles and loss against send rate](results/sweep-2026-10-13-2047.png)
 
-The knee is at about 100,000 pps. Each point is the median of three 2-second
-runs, with the individual runs shown as faint dots.
+The knee is between 80,000 and 100,000 pps. Each point is the median of three
+2 second runs, with the individual runs shown as faint dots.
 
-- **Up to 50,000 pps** the path is healthy: no loss, and p50 settles near 35 µs.
-- **At 80,000 pps** the tail moves first: p99 is about 1.2 ms while p50 is
-  still 37 µs.
-- **At 100,000 pps** p95 is about 2.3 ms and p99 about 5 ms, still with no loss
-  and a p50 of 42 µs.
-- **Past that** the path is saturated: p50 jumps to about 40 ms, roughly 1000
-  times slower, and about 10% of packets are lost.
+- **Up to 50,000 pps** the path is healthy: no loss, p50 settles near 34 µs and
+  p99 stays around 100 µs.
+- **At 80,000 pps** the tail moves first: p99 is about 1.8 ms while p50 is
+  still 40 µs. The path is already unstable here: two of the three runs lost
+  nothing, but the third saturated, with 4% loss and a p50 of 32 ms.
+- **At 100,000 pps** the path is saturated in two of the three runs: the median
+  p50 is about 22 ms and 1.5% of packets are lost. The one run that held on
+  kept a p50 of 60 µs, but its p99 was 11 ms.
+- **Past that** every run is saturated: p50 sits at about 41 ms, more than 1000
+  times slower than the healthy 34 µs, and 8 to 11% of packets are lost.
 
-The sender cannot push more than about 114,000 pps on this machine, so every
-target from 120,000 up lands at the same achieved rate. That is why the plot's
-x-axis is the achieved rate, not the target. RTT is also higher at 1,000 to
-2,000 pps than at 5,000: at low rates both programs sleep between packets, and
-the wake-up time is part of what gets measured.
+The sender cannot push more than about 110,000 pps on this machine, so every
+target from 120,000 up lands at roughly the same achieved rate. That is why the
+plot's x axis is the achieved rate, not the target. RTT is also higher at 1,000
+to 2,000 pps (about 110 µs) than at 5,000: at low rates both programs sleep
+between packets, and the wake-up time is part of what gets measured.
