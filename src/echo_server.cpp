@@ -15,7 +15,6 @@ int main(){
         return 1;
     }
 
-    // Describe MY OWN address. Which port the server is claiming 
     sockaddr_in  server_addr{};
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr= INADDR_ANY;
@@ -36,7 +35,7 @@ int main(){
 
     // Looping forever and echoing whatever arrives
     while(true){
-        // recvfrom overwrites client_len, so reset it before every call
+        // recvfrom overwrites client_len so reset it before every call
         socklen_t client_len = sizeof(client_addr);
 
         // recvfrom blocks until a packet arrives and fills client_addr with WHO sent it
@@ -47,7 +46,7 @@ int main(){
             continue;
         }
 
-        // No printing in this loop: terminal output would be timed as network latency
+        // No printing in this loop because terminal output would be timed as network latency
 
         // send the exact same byte to whoever sent them
         sendto(sock, buffer, n,0, (sockaddr*)&client_addr,client_len );

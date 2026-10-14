@@ -6,6 +6,7 @@
 #include <cstdint>       // uint64_t
 #include <cstdio>        // printf
 #include <cstdlib>       // strtol
+#include <cstring>       // strcmp
 #include <thread>        // std::thread, sleep_for
 #include <vector>        // std::vector, one RTT slot per packet
 #include <sys/socket.h>  // socket, recvfrom, sendto, setsockopt
@@ -47,14 +48,20 @@ uint64_t percentile(const std::vector<uint64_t>& sorted, double p) {
 }
 
 int main(int argc, char* argv[]) {
-    // Usage: ./client [rate in packets per second] [duration in seconds]
+    // Usage: ./client [rate in packets per second] [duration in seconds] [--csv]
+    // --csv prints the result as one comma-separated line, for sweep.py to read
     long rate = 1000;
     long duration = 5;
+    bool csv = false;
+    if (argc > 1 && std::strcmp(argv[argc - 1], "--csv") == 0) {
+        csv = true;
+        argc--;
+    }
     if (argc > 1) rate = std::strtol(argv[1], nullptr, 10);
     if (argc > 2) duration = std::strtol(argv[2], nullptr, 10);
 
     if (argc > 3 || rate < 1 || rate > 1'000'000 || duration < 1 || duration > 3600) {
-        std::cerr << "usage: " << argv[0] << " [rate_pps] [duration_seconds]\n";
+        std::cerr << "usage: " << argv[0] << " [rate_pps] [duration_seconds] [--csv]\n";
         return 1;
     }
 
@@ -95,7 +102,7 @@ int main(int argc, char* argv[]) {
     }
     server_addr.sin_port = htons(9000);
 
-    // One RTT slot per packet, allocated up front so nothing allocates
+    // One RTT slot per packet allocated up front so nothing allocates
     // while the run is being timed. The slot index is the packet's seq.
     std::vector<uint64_t> rtt_ns(total, NOT_RECEIVED);
 
@@ -128,7 +135,7 @@ int main(int argc, char* argv[]) {
         }
     });
 
-    // Sender: open loop. Packet i leaves at start + i * interval, whether or
+    // Open loop. Packet i leaves at start + i * interval, whether or
     // not any reply has come back.
     // sent and the two send times only cover the measured packets, not warm-up
     uint64_t sent = 0;
@@ -137,7 +144,7 @@ int main(int argc, char* argv[]) {
     const uint64_t start_ns = now_ns();
 
     for (uint64_t i = 0; i < total; i++) {
-        // Absolute schedule, so a late send does not push every later one back
+        // Absolute schedule so a late send does not push every later one back
         uint64_t target_ns = start_ns + i * interval_ns;
 
         uint64_t now = now_ns();
@@ -156,7 +163,7 @@ int main(int argc, char* argv[]) {
         ssize_t bytesSent = sendto(sock, &out, sizeof(out), 0,
                                    reinterpret_cast<sockaddr*>(&server_addr), sizeof(server_addr));
 
-        // A failed send (e.g. a full send buffer) is skipped, not retried:
+        // A failed sendis skipped, not retried:
         // retrying would break the fixed schedule
         if (bytesSent == sizeof(out) && i >= warmup) {
             if (sent == 0) first_send_ns = out.send_time_ns;
@@ -186,6 +193,24 @@ int main(int argc, char* argv[]) {
     uint64_t measured_received = samples.size();
     uint64_t lost = sent - measured_received;
     double loss_pct = sent > 0 ? 100.0 * lost / sent : 0.0;
+
+    if (csv) {
+        // target_pps,achieved_pps,sent,received,lost,loss_pct,p50_us,p95_us,p99_us
+        // The three percentiles are left empty when no reply came back
+        std::printf("%ld,%.0f,%llu,%llu,%llu,%.4f,", rate, achieved,
+                    static_cast<unsigned long long>(sent),
+                    static_cast<unsigned long long>(measured_received),
+                    static_cast<unsigned long long>(lost), loss_pct);
+        if (samples.empty()) {
+            std::printf(",,\n");
+            return 1;
+        }
+        std::printf("%.1f,%.1f,%.1f\n",
+                    percentile(samples, 50) / 1000.0,
+                    percentile(samples, 95) / 1000.0,
+                    percentile(samples, 99) / 1000.0);
+        return 0;
+    }
 
     std::printf("target rate: %ld pps   achieved: %.0f pps\n", rate, achieved);
     std::printf("sent: %llu   received: %llu   lost: %llu (%.2f%%)\n",
