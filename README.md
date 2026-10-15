@@ -51,10 +51,24 @@ comes back, which is what lets queues build and the knee appears.
 
 ## Build & run
 
+Build with CMake (install it with `brew install cmake` ):
+
+```bash
+cmake -S . -B build
+cmake --build build
+```
+
+This puts `./echo_server` and `./client` in the project folder, built with
+optimisation on. Without CMake, the same can be done directly:
+
 ```bash
 g++ -std=c++17 -O2 src/echo_server.cpp -o echo_server
 g++ -std=c++17 -O2 -pthread src/client.cpp -o client
+```
 
+Then run them in two terminals:
+
+```bash
 ./echo_server        # terminal 1 — stays running, waiting for packets
 ./client 1000 5      # terminal 2 — 1000 packets per second for 5 seconds
 ```
@@ -175,7 +189,7 @@ Phase 4, jitter, loss, and the results writeup:
 The full written report for this sweep is in
 [results/2026-10-15-1601/report.md](results/2026-10-15-1601/report.md).
 
-#### What we added, and why
+#### What we added and why
 
 **1. Jitter.** Percentiles tell you how slow packets were, but not in what order.
 Imagine two runs with the same eight round trips:

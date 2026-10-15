@@ -4,6 +4,9 @@ client
 *.o
 *.out
 
+# CMake build folder
+build/
+
 
 # Editor / OS cruft
 .vscode/
