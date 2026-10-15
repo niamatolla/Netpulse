@@ -3,6 +3,34 @@
 A UDP latency load tester: it pushes a network path with a controlled, rising
 stream of packets and measures exactly how and when the path starts to degrade.
 
+## Results
+
+![Latency, jitter and loss against send rate](results/2026-10-15-1601/sweep.png)
+
+Sweep of 2026-10-15, UDP over loopback on an Apple M1 laptop. Each value is the
+median of five 2 second runs.
+
+| Send rate (pps) | p50 | p99 | Packets lost |
+|---|---|---|---|
+| 10,000 | 41 µs | 66 µs | 0% |
+| 50,000 | 34 µs | 304 µs | 0% |
+| 80,000 | 37 µs | 1.7 ms | 0% |
+| 100,000 | 49 µs | 4.7 ms | 0% |
+| 110,000 | 39.5 ms | 42.3 ms | 5.4% |
+
+- **The tail breaks first.** Between 50,000 and 100,000 pps, p99 grows about
+  15 times while p50 barely moves. An average would have hidden this.
+- **Then the path collapses.** Between 100,000 and 110,000 pps, p50 jumps about
+  800 times, from 49 µs to 40 ms, and packets start being dropped.
+- **The bottleneck is the echo server's receive queue.** Packet counts on both
+  sides show every lost packet disappears before the server reads it.
+- **Jitter stays flat (4 to 11 µs) even at saturation**, because a full queue
+  delays every packet by about the same amount. Percentiles and loss reveal the
+  knee; jitter does not.
+
+Full write-up with every rate, the rules behind each finding, and the
+limitations: [results/2026-10-15-1601/report.md](results/2026-10-15-1601/report.md).
+
 ## What it does
 
 Netpulse sends UDP packets to an echo server at a configurable rate, times the
@@ -15,7 +43,7 @@ report tail latency, the behaviour that actually matters under load.
 Every network path has a breaking point. Under light traffic it's fast and
 lossless; as traffic rises, internal queues fill until latency spikes and packets
 drop. That transition is sudden, not gradual. Netpulse is a controlled experiment
-to find that point. I's the same question capacity planning and load testing ask of
+to find that point. It's the same question capacity planning and load testing ask of
 real systems.
 
 ## What it measures
@@ -125,7 +153,7 @@ The sweep was first planned as 100 → 5000 pps, but loopback on this machine do
 not start to degrade until around 80,000 pps, so that range would have shown a
 flat line.
 
-## Status
+## How it was built, phase by phase
 
 
 Phase 0, UDP echo verified end to end:
