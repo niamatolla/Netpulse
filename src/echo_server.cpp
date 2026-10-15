@@ -1,9 +1,11 @@
 #include <iostream>      // std::cout for printing
-#include <cstring>       // strlen
-#include <sys/socket.h>  // socket, bind, recvfrom, sendto
+#include <cerrno>        // errno, EAGAIN
+#include <cstdint>       // uint64_t
+#include <sys/socket.h>  // socket, bind, recvfrom, sendto, setsockopt
+#include <sys/time.h>    // timeval
 #include <netinet/in.h>  // sockaddr_in, INADDR_ANY
 #include <arpa/inet.h>   // htons, inet_pton
-#include <unistd.h>      // closexcode-select --install
+#include <unistd.h>      // close
 
 int main(){
 
@@ -28,10 +30,26 @@ int main(){
     }
 
 
-    std::cout << " Echo server listening in port 9000...\n";
+    // Wake up after 0.5 seconds without packets, so a summary of the run that
+    // just ended can be printed while nothing is being timed
+    timeval timeout{};
+    timeout.tv_usec = 500'000;
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+        std::cerr << "setsockopt() failed\n";
+        close(sock);
+        return 1;
+    }
+
+    std::cout << " Echo server listening in port 9000..." << std::endl;
 
     char buffer[1024];
     sockaddr_in  client_addr{};
+
+    // Counters for the current run. Comparing them with the client's totals
+    // shows where lost packets went missing.
+    uint64_t received = 0;     // packets that reached this program
+    uint64_t echoed = 0;       // replies sendto accepted
+    uint64_t echo_failed = 0;  // replies sendto refused, e.g. a full send buffer
 
     // Looping forever and echoing whatever arrives
     while(true){
@@ -42,14 +60,29 @@ int main(){
         ssize_t n = recvfrom( sock, buffer, sizeof(buffer)-1, 0, (sockaddr*)&client_addr, &client_len);
 
         if (n < 0) {
+            // Idle for 0.5 seconds: the run is over, so this is a safe moment to print
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                if (received > 0) {
+                    std::cout << "run summary: received " << received
+                              << ", echoed " << echoed
+                              << ", failed to echo " << echo_failed << std::endl;
+                    received = echoed = echo_failed = 0;
+                }
+                continue;
+            }
             std::cerr << "recvfrom() failed\n";
             continue;
         }
+        received++;
 
         // No printing in this loop because terminal output would be timed as network latency
 
         // send the exact same byte to whoever sent them
-        sendto(sock, buffer, n,0, (sockaddr*)&client_addr,client_len );
+        if (sendto(sock, buffer, n,0, (sockaddr*)&client_addr,client_len ) == n) {
+            echoed++;
+        } else {
+            echo_failed++;
+        }
 
     }
     close(sock);

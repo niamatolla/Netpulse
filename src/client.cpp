@@ -26,6 +26,9 @@ struct Packet {
 // Marks an RTT slot whose reply has not arrived
 const uint64_t NOT_RECEIVED = UINT64_MAX;
 
+// Marks an RTT slot whose packet never left, because sendto failed
+const uint64_t NOT_SENT = UINT64_MAX - 1;
+
 // How long to keep listening for late replies after the last packet is sent
 const uint64_t GRACE_NS = 1'000'000'000;
 
@@ -139,6 +142,8 @@ int main(int argc, char* argv[]) {
     // not any reply has come back.
     // sent and the two send times only cover the measured packets, not warm-up
     uint64_t sent = 0;
+    uint64_t sent_all = 0;       // every packet that left, warm-up included
+    uint64_t send_failures = 0;  // sendto calls that failed, warm-up included
     uint64_t first_send_ns = 0;
     uint64_t last_send_ns = 0;
     const uint64_t start_ns = now_ns();
@@ -163,9 +168,15 @@ int main(int argc, char* argv[]) {
         ssize_t bytesSent = sendto(sock, &out, sizeof(out), 0,
                                    reinterpret_cast<sockaddr*>(&server_addr), sizeof(server_addr));
 
-        // A failed sendis skipped, not retried:
+        // A failed send is skipped, not retried:
         // retrying would break the fixed schedule
-        if (bytesSent == sizeof(out) && i >= warmup) {
+        if (bytesSent != sizeof(out)) {
+            send_failures++;
+            rtt_ns[i] = NOT_SENT;  // so it is not mistaken for a lost reply
+            continue;
+        }
+        sent_all++;
+        if (i >= warmup) {
             if (sent == 0) first_send_ns = out.send_time_ns;
             sent++;
             last_send_ns = out.send_time_ns;
@@ -186,8 +197,46 @@ int main(int argc, char* argv[]) {
     std::vector<uint64_t> samples;
     samples.reserve(measured);
     for (uint64_t seq = warmup; seq < total; seq++) {
-        if (rtt_ns[seq] != NOT_RECEIVED) samples.push_back(rtt_ns[seq]);
+        if (rtt_ns[seq] < NOT_SENT) samples.push_back(rtt_ns[seq]);
     }
+
+    // Jitter, as defined in RFC 3550: how much the delay changes from one
+    // packet to the next. D is the change between two consecutive received
+    // packets, in the order they were sent, skipping lost ones. J is the RFC's
+    // smoothed running value: each new D only moves it 1/16 of the way, so its
+    // final value mostly reflects the end of the run. The mean of D summarises
+    // the whole run. Both use round trips, since we have no one-way delays.
+    double jitter_rfc_ns = 0;
+    double jitter_sum_ns = 0;
+    uint64_t jitter_count = 0;
+    uint64_t previous_rtt = NOT_RECEIVED;
+
+    // Loss bursts: the longest run of consecutive measured packets that never
+    // came back. Ten scattered losses and ten in a row are very different.
+    uint64_t current_burst = 0;
+    uint64_t max_loss_burst = 0;
+
+    for (uint64_t seq = warmup; seq < total; seq++) {
+        uint64_t rtt = rtt_ns[seq];
+        if (rtt == NOT_SENT) continue;
+
+        if (rtt == NOT_RECEIVED) {
+            current_burst++;
+            max_loss_burst = std::max(max_loss_burst, current_burst);
+            continue;
+        }
+        current_burst = 0;
+
+        if (previous_rtt != NOT_RECEIVED) {
+            double d = rtt > previous_rtt ? rtt - previous_rtt : previous_rtt - rtt;
+            jitter_rfc_ns += (d - jitter_rfc_ns) / 16.0;
+            jitter_sum_ns += d;
+            jitter_count++;
+        }
+        previous_rtt = rtt;
+    }
+    double jitter_mean_ns = jitter_count > 0 ? jitter_sum_ns / jitter_count : 0;
+
     std::sort(samples.begin(), samples.end());
 
     uint64_t measured_received = samples.size();
@@ -195,20 +244,24 @@ int main(int argc, char* argv[]) {
     double loss_pct = sent > 0 ? 100.0 * lost / sent : 0.0;
 
     if (csv) {
-        // target_pps,achieved_pps,sent,received,lost,loss_pct,p50_us,p95_us,p99_us
-        // The three percentiles are left empty when no reply came back
+        // target_pps,achieved_pps,sent,received,lost,loss_pct,p50_us,p95_us,p99_us,
+        // jitter_rfc_us,jitter_mean_us,max_loss_burst
+        // The percentiles and jitter are left empty when no reply came back
         std::printf("%ld,%.0f,%llu,%llu,%llu,%.4f,", rate, achieved,
                     static_cast<unsigned long long>(sent),
                     static_cast<unsigned long long>(measured_received),
                     static_cast<unsigned long long>(lost), loss_pct);
         if (samples.empty()) {
-            std::printf(",,\n");
+            std::printf(",,,,,%llu\n", static_cast<unsigned long long>(max_loss_burst));
             return 1;
         }
-        std::printf("%.1f,%.1f,%.1f\n",
+        std::printf("%.1f,%.1f,%.1f,%.1f,%.1f,%llu\n",
                     percentile(samples, 50) / 1000.0,
                     percentile(samples, 95) / 1000.0,
-                    percentile(samples, 99) / 1000.0);
+                    percentile(samples, 99) / 1000.0,
+                    jitter_rfc_ns / 1000.0,
+                    jitter_mean_ns / 1000.0,
+                    static_cast<unsigned long long>(max_loss_burst));
         return 0;
     }
 
@@ -217,6 +270,13 @@ int main(int argc, char* argv[]) {
                 static_cast<unsigned long long>(sent),
                 static_cast<unsigned long long>(measured_received),
                 static_cast<unsigned long long>(lost), loss_pct);
+
+    // Totals with warm-up included, to compare with the echo server's own
+    // per-run summary and see where lost packets went missing
+    std::printf("including warm-up: sent %llu, received %llu, failed sends %llu\n",
+                static_cast<unsigned long long>(sent_all),
+                static_cast<unsigned long long>(received),
+                static_cast<unsigned long long>(send_failures));
 
     if (samples.empty()) {
         std::printf("no replies to measure\n");
@@ -229,6 +289,10 @@ int main(int argc, char* argv[]) {
                 percentile(samples, 99) / 1000.0,
                 samples.size(),
                 static_cast<unsigned long long>(warmup));
+    std::printf("jitter: %.1f us (RFC 3550)   mean change: %.1f us   longest loss burst: %llu packets\n",
+                jitter_rfc_ns / 1000.0,
+                jitter_mean_ns / 1000.0,
+                static_cast<unsigned long long>(max_loss_burst));
 
     return 0;
 
